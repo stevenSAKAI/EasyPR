@@ -162,17 +162,10 @@ int testMain() {
 
           assert(test_plate_recognize() == 0);
           break;
-        case 9:
-          isExit = true;
-          break;
+
         default:
-          std::cout << kv->get("input_error") << ":";
-          isRepeat = true;
           break;
       }
-    }
-  }
-
   return 0;
 }
 
@@ -413,67 +406,75 @@ void command_line_handler(int argc, const char* argv[]) {
 }
 
 int main(int argc, const char* argv[]) {
-  std::shared_ptr<easypr::Kv> kv(new easypr::Kv);
-  kv->load("resources/text/chinese_mapping");
 
-  if (argc > 1) {
-    // handle command line execution.
-    command_line_handler(argc, argv);
-    return 0;
-  }
+    cv::Mat src = cv::imread("resources/image/42.jpg");
+    std::vector<cv::Mat> resultVec;
+    easypr::CCharsSegment plate;
 
-  bool isExit = false;
-  while (!isExit) {
-    easypr::Utils::print_file_lines("resources/text/main_menu");
-    std::cout << kv->get("make_a_choice") << ":";
+    int result = plate.charsSegment_me(src, resultVec);
 
-    int select = -1;
-    bool isRepeat = true;
-    while (isRepeat) {
-      std::cin >> select;
-      isRepeat = false;
-      switch (select) {
-        case 1:
-          easypr::demo::testMain();
-          break;
-        case 2:
-          easypr::demo::accuracyTestMain();
-          break;
-        case 3:
-          std::cout << "Run \"demo svm\" for more usage." << std::endl;
-          {
-            easypr::SvmTrain svm("tmp/svm", "tmp/svm.xml");
-            svm.train();
-          }
-          break;
-        case 4:
-          std::cout << "Run \"demo ann\" for more usage." << std::endl;
-          {
-            easypr::AnnTrain ann("tmp/ann", "tmp/ann.xml");
-            ann.train();
-          }
-          break;
-        case 5:
-          easypr::demo::trainChineseMain();
-          break;
-        case 6: {
-          //TODO: genenrate gray characters
-          easypr::demo::accuracyCharRecognizeTest("resources/image/tmp/plates_200k");
-          break;
-        }
-        case 7: {
-          easypr::Utils::print_file_lines("resources/text/thanks");
-          break;
-        }
-        case 8:
-          isExit = true;
-          break;
-        default:
-          std::cout << kv->get("input_error") << ":";
-          isRepeat = true;
-          break;
-      }
-    }
-  }
+//  std::shared_ptr<easypr::Kv> kv(new easypr::Kv);
+//  kv->load("resources/text/chinese_mapping");
+//
+//  if (argc > 1) {
+//    // handle command line execution.
+//    command_line_handler(argc, argv);
+//    return 0;
+//  }
+//
+//  bool isExit = false;
+//  while (!isExit) {
+//    easypr::Utils::print_file_lines("resources/text/main_menu");
+//    std::cout << kv->get("make_a_choice") << ":";
+//
+//    int select = 1;
+//    bool isRepeat = true;
+//    while (isRepeat) {
+//      std::cin >> select;
+//      isRepeat = false;
+//      switch (select) {
+//        case 1:
+//          easypr::demo::testMain();
+//          break;
+//        case 2:
+//          easypr::demo::accuracyTestMain();
+//          break;
+//        case 3:
+//          std::cout << "Run \"demo svm\" for more usage." << std::endl;
+//          {
+//            easypr::SvmTrain svm("tmp/svm", "tmp/svm.xml");
+//            svm.train();
+//          }
+//          break;
+//        case 4:
+//          std::cout << "Run \"demo ann\" for more usage." << std::endl;
+//          {
+//            easypr::AnnTrain ann("tmp/ann", "tmp/ann.xml");
+//            ann.train();
+//          }
+//          break;
+//        case 5:
+//          easypr::demo::trainChineseMain();
+//          break;
+//        case 6: {
+//          //TODO: genenrate gray characters
+//          easypr::demo::accuracyCharRecognizeTest("resources/image/tmp/plates_200k");
+//          break;
+//        }
+//        case 7: {
+//          easypr::Utils::print_file_lines("resources/text/thanks");
+//          break;
+//        }
+//        case 8:
+//          isExit = true;
+//          break;
+//        default:
+//          std::cout << kv->get("input_error") << ":";
+//          isRepeat = true;
+//          break;
+//      }
+//    }
+//  }
+
   return 0;
 }

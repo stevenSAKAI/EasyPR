@@ -281,6 +281,402 @@ bool slideChineseGrayWindow(const Mat& image, Rect& mr, Mat& newRoi, Color plate
   return false;
 }
 
+int CCharsSegment::charsSegment_me(Mat input, vector<Mat>& resultVec) {
+    CvPoint2D32f rectpoint[4];
+    vector<Point> contours;
+    contours.push_back(Point2f(1205*2,977*2));
+    contours.push_back(Point2f(1206*2,955*2));
+    contours.push_back(Point2f(1324*2,973*2));
+    contours.push_back(Point2f(1325*2,952*2));
+
+//    contours.push_back(Point2f(1322*2,701*2));
+//    contours.push_back(Point2f(1199*2,705*2));
+//    contours.push_back(Point2f(1198*2,727*2));
+//    contours.push_back(Point2f(1322*2,724*2));
+
+//    contours.push_back(Point2f(1216 * 2, 464 * 2));
+//    contours.push_back(Point2f(1217 * 2, 486 * 2));
+//    contours.push_back(Point2f(1327 * 2, 487 * 2));
+//    contours.push_back(Point2f(1329 * 2, 464 * 2));
+
+//    contours.push_back(Point2f(1220*2,216*2));
+//    contours.push_back(Point2f(1221*2,236*2));
+//    contours.push_back(Point2f(1331*2,237*2));
+//    contours.push_back(Point2f(1333*2,216*2));
+
+/****************************28**************************/
+//
+//    contours.push_back(Point2f(622*2,1062*2));
+//    contours.push_back(Point2f(624*2,1082*2));
+//    contours.push_back(Point2f(739*2,1082*2));
+//    contours.push_back(Point2f(737*2,1062*2));
+//
+
+//    contours.push_back(Point2f(1479*2,716*2));
+//    contours.push_back(Point2f(1351*2,717*2));
+//    contours.push_back(Point2f(1351*2,741*2));
+//    contours.push_back(Point2f(1477*2,739*2));
+////
+//    contours.push_back(Point2f(1437*2,458*2));
+//    contours.push_back(Point2f(1310*2,460*2));
+//    contours.push_back(Point2f(1309*2,484*2));
+//    contours.push_back(Point2f(1436*2,482*2));
+
+    CvBox2D rect = minAreaRect(Mat(contours));
+    cvBoxPoints(rect, rectpoint); //获取4个顶点坐标
+    //与水平线的角度
+    float angle = rect.angle;
+    cout << angle << endl;
+    int line1 = sqrt((rectpoint[1].y - rectpoint[0].y) * (rectpoint[1].y - rectpoint[0].y) +
+                     (rectpoint[1].x - rectpoint[0].x) * (rectpoint[1].x - rectpoint[0].x));
+    int line2 = sqrt((rectpoint[3].y - rectpoint[0].y) * (rectpoint[3].y - rectpoint[0].y) +
+                     (rectpoint[3].x - rectpoint[0].x) * (rectpoint[3].x - rectpoint[0].x));
+
+    //为了让正方形横着放，所以旋转角度是不一样的。竖放的，给他加90度，翻过来
+    if (line1 > line2) {
+        angle = 90 + angle;
+    }
+    Rect mr = boundingRect(Mat(contours));
+    Mat srcImg(input, mr);
+
+    if (0) {
+        imshow("cut", srcImg);
+        waitKey(0);
+        destroyWindow("cut");
+    }
+
+    Mat RatationedImg(srcImg.rows, srcImg.cols, CV_8UC1);
+    RatationedImg.setTo(0);
+    Point2f center = rect.center;  //中心点
+
+    Mat M2 = getRotationMatrix2D(center, angle, 1);//计算旋转加缩放的变换矩阵
+    warpAffine(input, RatationedImg, M2, input.size(), 1, 0, Scalar(0));//仿射变换
+
+    if (0) {
+        imshow("spin_pre", RatationedImg);
+        waitKey(0);
+        destroyWindow("spin_pre");
+    }
+    //
+    Mat cutImg(RatationedImg, mr);
+
+    if (0) {
+        imshow("spin", cutImg);
+        waitKey(0);
+        destroyWindow("spin");
+    }
+    // 灰度化
+    Mat greyImg;
+    cvtColor(cutImg, greyImg, CV_BGR2GRAY);
+
+    if (0) {
+        imshow("bin", greyImg);
+        waitKey(0);
+        destroyWindow("bin");
+    }
+
+    // imwrite("s4.jpg", greyImg); //将矫正后的图片保存下来
+    Mat binImg;
+    binImg = greyImg.clone();
+    spatial_ostu(binImg, 8, 2, YELLOW);
+    rectangle(binImg, Point(0, 0), Point(binImg.cols - 1, binImg.rows - 1), Scalar(0), 10);
+
+    if (0) {
+        imshow("bin", binImg);
+        waitKey(0);
+        destroyWindow("bin");
+    }
+
+
+    int width = binImg.cols;
+    int height = binImg.rows;
+    int *projectValArry = new int[width];//创建用于储存每列白色像素个数的数组
+    memset(projectValArry, 0, width * 4);//初始化数组
+
+    int perPixelValue;//每个像素的值
+
+    int startIndex = 0;//记录进入字符区的索引
+    int preStartIndex = width*0.6;
+    int endIndex = 0;//记录进入空白区域的索引
+    bool inBlock = false;//是否遍历到了字符区内
+    int count = 0;
+    Mat roiImg;
+//QR
+//    for (int col = 0; col < width; col++)//列
+//    {
+//        for (int row = 0; row < height; row++)//行
+//        {
+//            perPixelValue = binImg.at<uchar>(row, col);
+//            if (perPixelValue == 0)//如果是白底黑字
+//            {
+//                projectValArry[col]++;
+//            }
+//        }
+//
+//        float tmp = (float) projectValArry[col] / (float) binImg.rows;
+//        if (!inBlock && tmp >= 0.9 && tmp <= 1) {
+//            inBlock = true;
+//            cout << "startIndex is " << col << endl;
+//        } else if (inBlock) {
+//            if (projectValArry[col] >= projectValArry[col - 1] )
+//                continue;
+//            inBlock = false;
+//            if (count == 1) {
+//                startIndex = col - 1;
+//                roiImg = binImg(Range(0, height), Range(startIndex, width));
+//                roiImg = greyImg(Range(0, height), Range(startIndex, width));
+//                imshow("QR_cut", roiImg);
+//                waitKey(0);
+//                break;
+//            }
+//            count++;
+//        }
+//    }
+
+//    Mat verticalProjectionMat(height, width, CV_8UC1);//垂直投影的画布
+//    for (int i = 0; i < height; i++)
+//    {
+//        for (int j = 0; j < width; j++)
+//        {
+//            perPixelValue = 255;  //背景设置为白色
+//            verticalProjectionMat.at<uchar>(i, j) = perPixelValue;
+//        }
+//    }
+//    for (int i = 0; i < width; i++)//垂直投影直方图
+//    {
+//        for (int j = 0; j < projectValArry[i]; j++)
+//        {
+//            perPixelValue = 0;  //直方图设置为黑色
+//            verticalProjectionMat.at<uchar>(height - 1 - j, i) = perPixelValue;
+//        }
+//    }
+//    imshow("vertical", verticalProjectionMat);
+//    cvWaitKey(0);
+
+
+//    for (int i = 0; i < binImg.cols && count<2; ++i)
+//    {
+//        float tmp = (float)projectValArry[i]/(float)binImg.rows;
+//        if (!inBlock && tmp >= 0.8&& tmp <= 1)//进入字符区了
+//        {
+//            inBlock = true;
+//
+//            cout << "startIndex is " << startIndex << endl;
+//
+//        }
+//        else if (tmp >= 0.8&& tmp <= 1 && inBlock)//进入空白区了
+//        {
+//            for(;i<binImg.cols;i++){
+//                if(projectValArry[i]<projectValArry[i-1]
+//                        ){
+//                    break;
+//                }
+//            }
+//            startIndex  = i;
+//            inBlock = false;
+//
+//
+//            if(count==1) {
+//                roiImg = binImg(Range(0, binImg.rows), Range(startIndex -1, binImg.cols));
+//                roiImg_o = greyImg(Range(0, greyImg.rows), Range(startIndex - 1, greyImg.cols));
+//                imshow("colcut", roiImg_o);
+//                waitKey(0);
+//                break;
+//            }
+//            count++;
+//        }
+//    }
+    width = binImg.cols;
+    inBlock = false;//是否遍历到了字符区内
+
+    for (int col = width - 1; col >= 0; col--)
+    {
+        for (int row = 0; row < height; row++)//行
+        {
+            perPixelValue = binImg.at<uchar>(row, col);
+            if (perPixelValue == 0)//如果是白底黑字
+            {
+                projectValArry[col]++;
+            }
+        }
+
+        float tmp = (float) projectValArry[col] / (float) binImg.rows;
+        if (!inBlock && tmp >= 0.9 && tmp <= 1)//进入字符区了
+            inBlock = true;
+        else if (inBlock)//进入空白区了
+        {
+//            for(;i>=0;i--){
+//                if(projectValArry[col]<projectValArry[col+1]){
+//                    break;
+//                }
+//            }
+            if (projectValArry[col] >= projectValArry[col + 1])
+                continue;
+            endIndex = col + 1;
+          //  roiImg = binImg(Range(0, height), Range(startIndex, endIndex)); //QR
+            roiImg = binImg(Range(0, height), Range(preStartIndex, endIndex));
+//            roiImg = greyImg(Range(0, height), Range(startIndex, endIndex));
+            imshow("colcut2", roiImg);
+            waitKey(0);
+            inBlock = false;
+            break;
+        }
+    }
+
+    width = roiImg.cols;
+    projectValArry = new int[height];//创建用于储存每列白色像素个数的数组
+    memset(projectValArry, 0, height * 4);//初始化数组
+    for (int row = 0; row < height; row++)//遍历每个像素点
+    {
+        for (int col = 0; col < width; col++) {
+            perPixelValue = roiImg.at<uchar>(row, col);
+            if (perPixelValue == 0)//如果是白底黑字
+            {
+                projectValArry[row]++;
+            }
+        }
+        float tmp = (float) projectValArry[row] / (float) roiImg.cols;
+        if (!inBlock && tmp >= 0.9 && tmp <= 1)//进入字符区了
+        {
+            inBlock = true;
+            startIndex = row - 1;
+            cout << "startIndex is " << startIndex << endl;
+        } else if (inBlock)//进入空白区了
+        {
+            if (projectValArry[row] >= projectValArry[row - 1])
+                continue;
+            startIndex = row - 1;
+            inBlock = false;
+            break;
+
+        }
+    }
+    for (int row = height; row >=0; row--)//遍历每个像素点
+    {
+        for (int col = 0; col < width; col++) {
+            perPixelValue = roiImg.at<uchar>(row, col);
+            if (perPixelValue == 0)//如果是白底黑字
+            {
+                projectValArry[row]++;
+            }
+        }
+        float tmp = (float) projectValArry[row] / (float) roiImg.cols;
+        if (!inBlock && tmp >= 0.9 && tmp <= 1)//进入字符区了
+        {
+            inBlock = true;
+
+        } else if (inBlock)//进入空白区了
+        {
+            if (projectValArry[row] >= projectValArry[row + 1])
+                continue;
+
+            endIndex = row + 1;
+            inBlock = false;
+            roiImg = roiImg(Range(startIndex+1, endIndex-1), Range(0, roiImg.cols));
+            imshow("rowcut", roiImg);
+            waitKey(0);
+            break;
+        }
+    }
+
+    int gap = 0.75*roiImg.rows;
+    int witdh = 5 * gap;
+    int *projectValArryMax = new int[width];//创建用于储存每列白色像素个数的数组
+    memset(projectValArryMax, roiImg.rows, width * 4);//初始化数组
+    bool flag_max=true;
+    for(int col=roiImg.cols-witdh ;col>0;col--){
+//        if(col<=roiImg.cols/2){
+//            printf("error");
+//            break;
+//        }
+        projectValArry[col]=0;
+        projectValArryMax[col]=roiImg.rows;
+        for (int row = 0; row <roiImg.rows ; row++) {
+            perPixelValue = roiImg.at<uchar>(row, col);
+            if (perPixelValue == 0)//如果是白底黑字
+            {
+
+                projectValArry[col]++;
+            }
+            else if(flag_max){
+                projectValArryMax[col] = row;
+                flag_max=false;
+
+            }
+        }
+
+        flag_max=true;
+        float tmp = (float)projectValArry[col]/(float)roiImg.rows;
+        //float tmp2 = (float)projectValArryMax[col]/(float)roiImg.rows;
+        //if(tmp>0.85 && ((tmp2>=0.4 && tmp2<=0.6) || tmp2==1)){
+        if(tmp>0.85){
+            roiImg = roiImg(Range(0, roiImg.rows), Range(col, roiImg.cols));
+            break;
+        }
+    }
+    imshow("rowcut23", roiImg);
+    waitKey(0);
+    bitwise_not(roiImg,roiImg);
+    imwrite("r1.jpg", roiImg); //将矫正后的图片保存下来
+
+//    Mat horizontalProjectionMat(height, width, CV_8UC1);//创建画布
+//    for (int i = 0; i < height; i++)
+//    {
+//        for (int j = 0; j < width; j++)
+//        {
+//            perPixelValue = 255;
+//            horizontalProjectionMat.at<uchar>(i, j) = perPixelValue;//设置背景为白色
+//        }
+//    }
+//    for (int i = 0; i < height; i++)//水平直方图
+//    {
+//        for (int j = 0; j < projectValArry1[i]; j++)
+//        {
+//            perPixelValue = 0;
+//            horizontalProjectionMat.at<uchar>(i, width - 1 - j) = perPixelValue;//设置直方图为黑色
+//        }
+//    }
+//    imshow("水平投影",horizontalProjectionMat);
+//    cvWaitKey(0);
+
+    startIndex = 0;//记录进入字符区的索引
+    endIndex = 0;//记录进入空白区域的索引
+    inBlock = false;//是否遍历到了字符区内
+    for (int i = 0; i < roiImg.cols; ++i) {
+        float tmp = (float) projectValArry[i] / (float) roiImg.cols;
+        if (!inBlock && tmp >= 0.9 && tmp <= 1)//进入字符区了
+        {
+            for (; i < roiImg.cols; i++) {
+                if (projectValArry[i] < projectValArry[i - 1]) {
+                    inBlock = true;
+                    startIndex = i;
+                    cout << "startIndex is " << startIndex << endl;
+                    break;
+                }
+            }
+        } else if (tmp >= 0.9 && tmp <= 1 && inBlock)//进入空白区了
+        {
+            for (; i < roiImg.cols; i++) {
+                if (projectValArry[i] <= projectValArry[i - 1]) {
+                    break;
+                }
+            }
+            endIndex = i;
+            inBlock = false;
+            roiImg = roiImg(Range(startIndex, endIndex + 1), Range(0, roiImg.cols));
+
+            imshow("rowcut", roiImg);
+            waitKey(0);
+        }
+    }
+
+
+
+
+
+}
+
+
 
 int CCharsSegment::charsSegment(Mat input, vector<Mat>& resultVec, Color color) {
   if (!input.data) return 0x01;
@@ -289,115 +685,515 @@ int CCharsSegment::charsSegment(Mat input, vector<Mat>& resultVec, Color color) 
 
   Mat input_grey;
   cvtColor(input, input_grey, CV_BGR2GRAY);
-
-  if (0) {
-    imshow("plate", input_grey);
-    waitKey(0);
-    destroyWindow("plate");
-  }
+    if (0) {
+        imshow("grey", input_grey);
+        waitKey(0);
+        destroyWindow("grey");
+    }
+    Mat input_noise;
+    cv::GaussianBlur(input_grey,input_noise,Size(5, 5),0,0,BORDER_DEFAULT);
+    if (1) {
+        imshow("noise", input_noise);
+        waitKey(0);
+        destroyWindow("noise");
+    }
 
   Mat img_threshold;
-
   img_threshold = input_grey.clone();
+  //img_threshold = input_noise.clone();
   spatial_ostu(img_threshold, 8, 2, plateType);
-
+  //threshold(input_grey, img_threshold, 0, 255, CV_THRESH_OTSU);             //二值化
+  //threshold(input_grey, img_threshold, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY_INV);             //二值化
   if (0) {
-    imshow("plate", img_threshold);
+    imshow("bin", img_threshold);
     waitKey(0);
-    destroyWindow("plate");
+    destroyWindow("bin");
   }
 
-  // remove liuding and hor lines
-  // also judge weather is plate use jump count
-  if (!clearLiuDing(img_threshold)) return 0x02;
 
   Mat img_contours;
   img_threshold.copyTo(img_contours);
-
   vector<vector<Point> > contours;
   findContours(img_contours,
                contours,               // a vector of contours
                CV_RETR_EXTERNAL,       // retrieve the external contours
                CV_CHAIN_APPROX_NONE);  // all pixels of each contours
 
-  vector<vector<Point> >::iterator itc = contours.begin();
-  vector<Rect> vecRect;
+  for(int i= 0;i < contours.size(); i++)
+  {
+    //需要获取的坐标
+        CvPoint2D32f rectpoint[4];
+        CvBox2D rect =minAreaRect(Mat(contours[i]));
 
-  while (itc != contours.end()) {
-    Rect mr = boundingRect(Mat(*itc));
-    Mat auxRoi(img_threshold, mr);
+        cvBoxPoints(rect, rectpoint); //获取4个顶点坐标
+        //与水平线的角度
+        float angle = rect.angle;
+        cout << angle << endl;
 
-    if (verifyCharSizes(auxRoi)) vecRect.push_back(mr);
-    ++itc;
+        int line1 = sqrt((rectpoint[1].y - rectpoint[0].y)*(rectpoint[1].y - rectpoint[0].y) + (rectpoint[1].x - rectpoint[0].x)*(rectpoint[1].x - rectpoint[0].x));
+        int line2 = sqrt((rectpoint[3].y - rectpoint[0].y)*(rectpoint[3].y - rectpoint[0].y) + (rectpoint[3].x - rectpoint[0].x)*(rectpoint[3].x - rectpoint[0].x));
+        //rectangle(binImg, rectpoint[0], rectpoint[3], Scalar(255), 2);
+        //面积太小的直接pass
+        if (line1 * line2 < 5000 || line1 * line2 >8000)
+        {
+            continue;
+        }
+
+        //为了让正方形横着放，所以旋转角度是不一样的。竖放的，给他加90度，翻过来
+        if (line1 > line2)
+        {
+            angle = 90 + angle;
+        }
+      Rect mr = boundingRect(Mat(contours[i]));
+      Mat input_xx(input_grey,mr);
+      imshow("旋转之后", input_xx);
+      waitKey(0);
+        //新建一个感兴趣的区域图，大小跟原图一样大
+        Mat RoiSrcImg(input.rows, input.cols, CV_8UC3); //注意这里必须选CV_8UC3
+        RoiSrcImg.setTo(0); //颜色都设置为黑色
+        imshow("新建的ROI", RoiSrcImg);
+        waitKey(0);
+        //对得到的轮廓填充一下
+        drawContours(img_threshold, contours, i, Scalar(255),CV_FILLED,4);
+        namedWindow("RoiSrcImg", 1);
+        imshow("RoiSrcImg", img_threshold);
+        waitKey(0);
+        //抠图到RoiSrcImg
+        img_threshold.copyTo(RoiSrcImg, img_threshold);
+
+
+        //再显示一下看看，除了感兴趣的区域，其他部分都是黑色的了
+
+        //创建一个旋转后的图像
+        Mat RatationedImg(RoiSrcImg.rows, RoiSrcImg.cols, CV_8UC1);
+        RatationedImg.setTo(0);
+        //对RoiSrcImg进行旋转
+        Point2f center = rect.center;  //中心点
+        Mat M2 = getRotationMatrix2D(center, angle, 1);//计算旋转加缩放的变换矩阵
+        warpAffine(input_grey, RatationedImg, M2, RoiSrcImg.size(),1, 0, Scalar(0));//仿射变换
+        imshow("旋转之后", RatationedImg);
+        waitKey(0);
+        imwrite("r.jpg", RatationedImg); //将矫正后的图片保存下来
+
+      int width = RatationedImg.cols;
+      int height =  RatationedImg.rows;
+      int* projectValArry = new int[width];//创建用于储存每列白色像素个数的数组
+      memset(projectValArry, 0, width * 4);//初始化数组
+      int perPixelValue;//每个像素的值
+      for (int col = 0; col < width; col++)//列
+      {
+          for (int row = 0; row < height; row++)//行
+          {
+              perPixelValue = RatationedImg.at<uchar>(row, col);
+              if (perPixelValue == 0)//如果是白底黑字
+              {
+                  projectValArry[col]++;
+              }
+          }
+      }
+      Mat verticalProjectionMat(height, width, CV_8UC1);//垂直投影的画布
+      for (int i = 0; i < height; i++)
+      {
+          for (int j = 0; j < width; j++)
+          {
+              perPixelValue = 255;  //背景设置为白色
+              verticalProjectionMat.at<uchar>(i, j) = perPixelValue;
+          }
+      }
+      for (int i = 0; i < width; i++)//垂直投影直方图
+      {
+          for (int j = 0; j < projectValArry[i]; j++)
+          {
+              perPixelValue = 0;  //直方图设置为黑色
+              verticalProjectionMat.at<uchar>(height - 1 - j, i) = perPixelValue;
+          }
+      }
+      imshow("垂直投影", verticalProjectionMat);
+      cvWaitKey(0);
+
+
+      int startIndex = 0;//记录进入字符区的索引
+      int endIndex = 0;//记录进入空白区域的索引
+      bool inBlock = false;//是否遍历到了字符区内
+      int count111=0;
+      Mat roiImg,roiImg_o;
+      for (int i = 0; i < RatationedImg.cols && count111<2; ++i)
+      {
+          float tmp = (float)projectValArry[i]/(float)RatationedImg.rows;
+          if (!inBlock && tmp >= 0.9&& tmp <= 1)//进入字符区了
+          {
+              inBlock = true;
+
+              cout << "startIndex is " << startIndex << endl;
+
+          }
+          else if (tmp >= 0.9&& tmp <= 1 && inBlock)//进入空白区了
+          {
+              for(;i<RatationedImg.cols;i++){
+                  if(projectValArry[i]<projectValArry[i-1]){
+                      break;
+                  }
+              }
+              startIndex  = i;
+              inBlock = false;
+
+
+              if(count111==1) {
+                  roiImg = RatationedImg(Range(0, RatationedImg.rows), Range(startIndex + 1, RatationedImg.cols));
+                  roiImg_o = input_grey(Range(0, input_grey.rows), Range(startIndex + 1, input_grey.cols));
+                  imshow("colcut", roiImg_o);
+                  waitKey(0);
+                  break;
+
+
+              }
+
+              count111++;
+          }
+      }
+
+      inBlock = false;//是否遍历到了字符区内
+      for (int i = RatationedImg.cols-1; i >=0; i--)
+      {
+          float tmp = (float)projectValArry[i]/(float)RatationedImg.rows;
+          if (!inBlock && tmp >= 0.95&& tmp <= 1)//进入字符区了
+          {
+              inBlock = true;
+
+          }
+          else if (tmp >= 0.9&& tmp <= 1 && inBlock)//进入空白区了
+          {
+              for(;i>=0;i--){
+                  if(projectValArry[i]<projectValArry[i+1]){
+                      break;
+                  }
+              }
+              roiImg = RatationedImg(Range(0, RatationedImg.rows), Range(startIndex, i + 1));
+              roiImg_o = input_grey(Range(0, input_grey.rows), Range(startIndex, i + 1));
+              imshow("_colcut2", roiImg_o);
+              waitKey(0);
+              break;
+          }
+      }
+
+      width = roiImg.cols;
+      height =  roiImg.rows;
+      int* projectValArry1 = new int[height];//创建用于储存每列白色像素个数的数组
+      memset(projectValArry1, 0, height * 4);//初始化数组
+      for (int col = 0; col < height; col++)//遍历每个像素点
+      {
+          for (int row = 0; row < width; row++)
+          {
+              perPixelValue = roiImg.at<uchar>(col, row);
+              if (perPixelValue == 0)//如果是白底黑字
+              {
+                  projectValArry1[col]++;
+              }
+          }
+      }
+      Mat horizontalProjectionMat(height, width, CV_8UC1);//创建画布
+      for (int i = 0; i < height; i++)
+      {
+          for (int j = 0; j < width; j++)
+          {
+              perPixelValue = 255;
+              horizontalProjectionMat.at<uchar>(i, j) = perPixelValue;//设置背景为白色
+          }
+      }
+      for (int i = 0; i < height; i++)//水平直方图
+      {
+          for (int j = 0; j < projectValArry1[i]; j++)
+          {
+              perPixelValue = 0;
+              horizontalProjectionMat.at<uchar>(i, width - 1 - j) = perPixelValue;//设置直方图为黑色
+          }
+      }
+      imshow("水平投影",horizontalProjectionMat);
+      cvWaitKey(0);
+
+      startIndex = 0;//记录进入字符区的索引
+      endIndex = 0;//记录进入空白区域的索引
+      inBlock = false;//是否遍历到了字符区内
+      count111=0;
+      for (int i = 0; i < roiImg.cols && count111<2; ++i)
+      {
+          float tmp = (float)projectValArry1[i]/(float)roiImg.cols;
+          if (!inBlock && tmp <= 0.9)//进入字符区了
+          {
+              inBlock = true;
+              startIndex = i;
+              cout << "startIndex is " << startIndex << endl;
+
+          }
+          else if (tmp >= 0.9&& tmp <= 1 && inBlock)//进入空白区了
+          {
+              for(;i<roiImg.cols;i++){
+                  if(projectValArry1[i]<=projectValArry1[i-1]){
+                      break;
+                  }
+              }
+              endIndex = i;
+              inBlock = false;
+                  roiImg = roiImg(Range(startIndex, endIndex+1), Range(0, roiImg.cols));
+                roiImg_o = roiImg_o(Range(startIndex, endIndex+1), Range(0, roiImg_o.cols));
+
+                  imshow("rowcut", roiImg_o);
+                  waitKey(0);
+          }
+      }
+
+
   }
+
+
+
+
+
+    Mat Drawing = Mat::zeros(img_contours.size(), CV_8UC3);
+    RNG G_RNG(1234);
+    vector<vector<Point> >::iterator itc1 = contours.begin();
+    int count_error;
+    uchar* pxvec = img_contours.ptr<uchar>(0);
+    int i, j;
+    while(contours.size()==1){
+      Rect mr = boundingRect(Mat(*itc1));
+      if(mr.height*mr.width >= 6000){
+          if (0) {
+              imshow("plate", img_contours);
+              waitKey(0);
+              destroyWindow("plate");
+          }
+
+          for(int col=0;col<img_contours.rows;col++){
+              pxvec = img_contours.ptr<uchar>(col);
+              for(int row = 0;row<10; row++){
+                  pxvec[row] = 0;
+              }
+              for(int row = 0;row<10; row++){
+                  pxvec[img_contours.cols-row-1] = 0;
+              }
+
+          }
+          for(int row = 0;row<img_contours.cols; row++){
+            for(int col=0;col<5;col++){
+              pxvec = img_contours.ptr<uchar>(col);
+              pxvec[row] = 0;
+            }
+            for(int col=0;col<5;col++){
+              pxvec = img_contours.ptr<uchar>(img_contours.rows-col-1);
+              pxvec[row] = 0;
+            }
+          }
+
+          if (1) {
+              imshow("plate", img_contours);
+               waitKey(0);
+              destroyWindow("plate");
+          }
+          findContours(img_contours,
+                     contours,               // a vector of contours
+                     CV_RETR_EXTERNAL,       // retrieve the external contours
+                     CV_CHAIN_APPROX_NONE);  // all pixels of each contours
+
+      }
+      count_error++;
+      if(count_error>10)
+        return 0x003;
+    }
+
+    for(int i= 0;i < contours.size(); i++)
+    {
+     // float charAspect = (float)r.cols / (float)r.rows;
+        //需要获取的坐标
+//        CvPoint2D32f rectpoint[4];
+//        CvBox2D rect =minAreaRect(Mat(contours[i]));
+//
+//        cvBoxPoints(rect, rectpoint); //获取4个顶点坐标
+//        //与水平线的角度
+//        float angle = rect.angle;
+//        cout << angle << endl;
+//
+//        int line1 = sqrt((rectpoint[1].y - rectpoint[0].y)*(rectpoint[1].y - rectpoint[0].y) + (rectpoint[1].x - rectpoint[0].x)*(rectpoint[1].x - rectpoint[0].x));
+//        int line2 = sqrt((rectpoint[3].y - rectpoint[0].y)*(rectpoint[3].y - rectpoint[0].y) + (rectpoint[3].x - rectpoint[0].x)*(rectpoint[3].x - rectpoint[0].x));
+//        //rectangle(binImg, rectpoint[0], rectpoint[3], Scalar(255), 2);
+//        //面积太小的直接pass
+//        if (line1 * line2 < 5000)
+//        {
+//            continue;
+//        }
+//
+//        //为了让正方形横着放，所以旋转角度是不一样的。竖放的，给他加90度，翻过来
+//        if (line1 > line2)
+//        {
+//            angle = 90 + angle;
+//        }
+//
+//        //新建一个感兴趣的区域图，大小跟原图一样大
+//        Mat RoiSrcImg(input.rows, input.cols, CV_8UC3); //注意这里必须选CV_8UC3
+//        RoiSrcImg.setTo(0); //颜色都设置为黑色
+//        imshow("新建的ROI", RoiSrcImg);
+//        waitKey(0);
+//        //对得到的轮廓填充一下
+//        drawContours(img_threshold, contours, -1, Scalar(255),CV_FILLED, 8);
+//
+//        //抠图到RoiSrcImg
+//        input.copyTo(RoiSrcImg, img_threshold);
+//
+//
+//        //再显示一下看看，除了感兴趣的区域，其他部分都是黑色的了
+//        namedWindow("RoiSrcImg", 1);
+//        imshow("RoiSrcImg", RoiSrcImg);
+//        waitKey(0);
+//
+//        //创建一个旋转后的图像
+//        Mat RatationedImg(RoiSrcImg.rows, RoiSrcImg.cols, CV_8UC1);
+//        RatationedImg.setTo(0);
+//        //对RoiSrcImg进行旋转
+//        Point2f center = rect.center;  //中心点
+//        Mat M2 = getRotationMatrix2D(center, angle, 1);//计算旋转加缩放的变换矩阵
+//        warpAffine(RoiSrcImg, RatationedImg, M2, RoiSrcImg.size(),1, 0, Scalar(0));//仿射变换
+//        imshow("旋转之后", RatationedImg);
+//        waitKey(0);
+//        imwrite("r.jpg", RatationedImg); //将矫正后的图片保存下来
+        Scalar color = Scalar(G_RNG.uniform(0, 255), G_RNG.uniform(0, 255), G_RNG.uniform(0, 255));
+        drawContours(Drawing, contours, i, color, 2, 8, img_contours, 0, Point());
+    }
+    if (0) {
+        imshow("plate", Drawing);
+        waitKey(0);
+        destroyWindow("plate");
+    }
+    vector<vector<Point> >::iterator itc = contours.begin();
+
+    vector<Rect> vecRect;
+    Rect mr = boundingRect(Mat(*itc));
+    float aspect;
+    while (itc!=contours.end()) {
+
+
+        Mat auxRoi(img_threshold, mr);
+        aspect = (float)mr.width/(float)mr.height;
+        Mat newRoi;
+//        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_BINARY_INV + CV_THRESH_OTSU);
+//        imshow("input_grey", newRoi);
+//        waitKey(0);
+//        destroyWindow("input_grey");
+
+        if(mr.height*mr.width < 5000&& mr.height>7 && mr.width>7){
+            if(aspect>0.75){
+                Rect mr_tmp = mr;
+                mr_tmp.width =(int) (0.75 * mr.height);
+                mr_tmp.x = mr.x + mr.width -mr_tmp.width;
+                mr.width-=mr_tmp.width;
+                vecRect.push_back(mr_tmp);
+                continue;
+            }
+            else if(aspect>0.4)
+            {
+                vecRect.push_back(mr);
+                itc++;
+                if(itc==contours.end())
+                    break;
+                mr = boundingRect(Mat(*itc));
+                continue;
+            }
+            //vecRect.push_back(mr);
+        }
+
+      //vecRect.push_back(mr);
+
+        itc++;
+        if(itc==contours.end())
+            break;
+        mr = boundingRect(Mat(*itc));
+    }
+
+//    vector<vector<Point> >::iterator itc = contours.begin();
+//    vector<Rect> vecRect;
+//
+//    while (itc != contours.end()) {
+//        Rect mr = boundingRect(Mat(*itc));
+//        Mat auxRoi(img_threshold, mr);
+//
+//        //if (verifyCharSizes(auxRoi))
+//            vecRect.push_back(mr);
+//     ++itc;
+//    }
+
+    if (0) {
+        imshow("plate", Drawing);
+        waitKey(0);
+        destroyWindow("plate");
+    }
 
 
   if (vecRect.size() == 0) return 0x03;
 
   vector<Rect> sortedRect(vecRect);
   std::sort(sortedRect.begin(), sortedRect.end(),
-            [](const Rect& r1, const Rect& r2) { return r1.x < r2.x; });
+            [](const Rect& r1, const Rect& r2) { return r1.x > r2.x; });
 
-  size_t specIndex = 0;
+//  size_t specIndex = 0;
+  // specIndex = GetSpecificRect(sortedRect);
 
-  specIndex = GetSpecificRect(sortedRect);
+//  Rect chineseRect;
+//  if (specIndex < sortedRect.size())
+//    chineseRect = GetChineseRect(sortedRect[specIndex]);
+//  else
+//    return 0x04;
 
-  Rect chineseRect;
-  if (specIndex < sortedRect.size())
-    chineseRect = GetChineseRect(sortedRect[specIndex]);
-  else
-    return 0x04;
+//  if (0) {
+//    rectangle(img_threshold, chineseRect, Scalar(255));
+//    imshow("plate", img_threshold);
+//    waitKey(0);
+//    destroyWindow("plate");
+//  }
 
-  if (0) {
-    rectangle(img_threshold, chineseRect, Scalar(255));
-    imshow("plate", img_threshold);
-    waitKey(0);
-    destroyWindow("plate");
-  }
-
-  vector<Rect> newSortedRect;
-  newSortedRect.push_back(chineseRect);
-  RebuildRect(sortedRect, newSortedRect, specIndex);
-
-  if (newSortedRect.size() == 0) return 0x05;
+//  vector<Rect> newSortedRect;
+//  newSortedRect.push_back(chineseRect);
+   //RebuildRect(sortedRect, newSortedRect, specIndex);
+//
+//  if (newSortedRect.size() == 0) return 0x05;
 
   bool useSlideWindow = true;
   bool useAdapThreshold = true;
   //bool useAdapThreshold = CParams::instance()->getParam1b();
 
-  for (size_t i = 0; i < newSortedRect.size(); i++) {
-    Rect mr = newSortedRect[i];
+  for (size_t i = 0; i < sortedRect.size(); i++) {
+    Rect mr = sortedRect[i];
 
     // Mat auxRoi(img_threshold, mr);
     Mat auxRoi(input_grey, mr);
     Mat newRoi;
 
-    if (i == 0) {
-      if (useSlideWindow) {
-        float slideLengthRatio = 0.1f;
-        //float slideLengthRatio = CParams::instance()->getParam1f();
-        if (!slideChineseWindow(input_grey, mr, newRoi, plateType, slideLengthRatio, useAdapThreshold))
-          judgeChinese(auxRoi, newRoi, plateType);
-      }
-      else
-        judgeChinese(auxRoi, newRoi, plateType);
-    }
-    else {
-      if (BLUE == plateType) {
-        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_BINARY + CV_THRESH_OTSU);
-      }
-      else if (YELLOW == plateType) {
-        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_BINARY_INV + CV_THRESH_OTSU);
-      }
-      else if (WHITE == plateType) {
-        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
-      }
-      else {
-        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
-      }
+//    if (i == 0) {
+//      if (useSlideWindow) {
+//        float slideLengthRatio = 0.1f;
+//        //float slideLengthRatio = CParams::instance()->getParam1f();
+//        if (!slideChineseWindow(input_grey, mr, newRoi, plateType, slideLengthRatio, useAdapThreshold))
+//          judgeChinese(auxRoi, newRoi, plateType);
+//      }
+//      else
+//        judgeChinese(auxRoi, newRoi, plateType);
+//    }
+//    else {
+      threshold(auxRoi, newRoi, 0, 255, CV_THRESH_BINARY_INV + CV_THRESH_OTSU);
+//      if (BLUE == plateType) {
+//        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_BINARY + CV_THRESH_OTSU);
+//      }
+//      else if (YELLOW == plateType) {
+//
+//      }
+//      else if (WHITE == plateType) {
+//        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
+//      }
+//      else {
+//        threshold(auxRoi, newRoi, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
+//      }
 
-      newRoi = preprocessChar(newRoi);
-    }
+      // newRoi = preprocessChar(newRoi);
+      newRoi = preprocessChar(auxRoi);
+    //}
 
     if (0) {
       if (i == 0) {
@@ -1045,7 +1841,7 @@ int CCharsSegment::GetSpecificRect(const vector<Rect>& vecRect) {
 
 int CCharsSegment::RebuildRect(const vector<Rect>& vecRect,
                                vector<Rect>& outRect, int specIndex) {
-  int count = 6;
+  int count = 15;
   for (size_t i = specIndex; i < vecRect.size() && count; ++i, --count) {
     outRect.push_back(vecRect[i]);
   }
