@@ -14,7 +14,7 @@ class CCharsSegment {
   CCharsSegment();
   //! using ostu algotithm the segment chars in plate
   int charsSegment(Mat input, std::vector<Mat>& resultVec, Color color = BLUE);
-  int charsSegment_me(Mat input, std::vector<Mat>& resultVec);
+  int charsSegment_me(Mat input, Mat& resultVec, vector<Point> contours);
 
   //! using methods to segment chars in plate
   int charsSegmentUsingOSTU(Mat input, std::vector<Mat>& resultVec, std::vector<Mat>& grayChars, Color color = BLUE);

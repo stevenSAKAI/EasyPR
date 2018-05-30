@@ -281,52 +281,16 @@ namespace easypr {
         return false;
     }
 
-    int CCharsSegment::charsSegment_me(Mat input, vector<Mat>& resultVec) {
+    int CCharsSegment::charsSegment_me(Mat input, Mat& resultVec, vector<Point> contours) {
         CvPoint2D32f rectpoint[4];
-        vector<Point> contours;
-        contours.push_back(Point2f(1205*2,977*2));
-        contours.push_back(Point2f(1206*2,955*2));
-        contours.push_back(Point2f(1324*2,973*2));
-        contours.push_back(Point2f(1325*2,952*2));
 
-//    contours.push_back(Point2f(1322*2,701*2));
-//    contours.push_back(Point2f(1199*2,705*2));
-//    contours.push_back(Point2f(1198*2,727*2));
-//    contours.push_back(Point2f(1322*2,724*2));
-
-//    contours.push_back(Point2f(1216 * 2, 464 * 2));
-//    contours.push_back(Point2f(1217 * 2, 486 * 2));
-//    contours.push_back(Point2f(1327 * 2, 487 * 2));
-//    contours.push_back(Point2f(1329 * 2, 464 * 2));
-
-//    contours.push_back(Point2f(1220*2,216*2));
-//    contours.push_back(Point2f(1221*2,236*2));
-//    contours.push_back(Point2f(1331*2,237*2));
-//    contours.push_back(Point2f(1333*2,216*2));
-
-/****************************28**************************/
-//
-//    contours.push_back(Point2f(622*2,1062*2));
-//    contours.push_back(Point2f(624*2,1082*2));
-//    contours.push_back(Point2f(739*2,1082*2));
-//    contours.push_back(Point2f(737*2,1062*2));
-//
-
-//    contours.push_back(Point2f(1479*2,716*2));
-//    contours.push_back(Point2f(1351*2,717*2));
-//    contours.push_back(Point2f(1351*2,741*2));
-//    contours.push_back(Point2f(1477*2,739*2));
-////
-//    contours.push_back(Point2f(1437*2,458*2));
-//    contours.push_back(Point2f(1310*2,460*2));
-//    contours.push_back(Point2f(1309*2,484*2));
-//    contours.push_back(Point2f(1436*2,482*2));
 
         CvBox2D rect = minAreaRect(Mat(contours));
         cvBoxPoints(rect, rectpoint); //获取4个顶点坐标
         //与水平线的角度
         float angle = rect.angle;
         cout << angle << endl;
+        float tmmp;
         int line1 = sqrt((rectpoint[1].y - rectpoint[0].y) * (rectpoint[1].y - rectpoint[0].y) +
                          (rectpoint[1].x - rectpoint[0].x) * (rectpoint[1].x - rectpoint[0].x));
         int line2 = sqrt((rectpoint[3].y - rectpoint[0].y) * (rectpoint[3].y - rectpoint[0].y) +
@@ -335,14 +299,16 @@ namespace easypr {
         //为了让正方形横着放，所以旋转角度是不一样的。竖放的，给他加90度，翻过来
         if (line1 > line2) {
             angle = 90 + angle;
-        }
+            tmmp = angle;
+        } else
+            tmmp = -angle;
         Rect mr = boundingRect(Mat(contours));
         Mat srcImg(input, mr);
 
-        if (0) {
+        if (1) {
             imshow("cut", srcImg);
             waitKey(0);
-            destroyWindow("cut");
+//            destroyWindow("cut");
         }
 
         Mat RatationedImg(srcImg.rows, srcImg.cols, CV_8UC1);
@@ -359,34 +325,41 @@ namespace easypr {
         }
         //
         Mat cutImg(RatationedImg, mr);
+//        resultVec = cutImg;
+//        return 1;
 
-        if (0) {
+
+
+
+        if (1) {
             imshow("spin", cutImg);
             waitKey(0);
             destroyWindow("spin");
         }
+
         // 灰度化
         Mat greyImg;
         cvtColor(cutImg, greyImg, CV_BGR2GRAY);
 
-        if (0) {
-            imshow("bin", greyImg);
+        if (1) {
+            imshow("bin１", greyImg);
             waitKey(0);
-            destroyWindow("bin");
+//            destroyWindow("bin");
         }
 
-        // imwrite("s4.jpg", greyImg); //将矫正后的图片保存下来
         Mat binImg;
         binImg = greyImg.clone();
         spatial_ostu(binImg, 8, 2, YELLOW);
-        rectangle(binImg, Point(0, 0), Point(binImg.cols - 1, binImg.rows - 1), Scalar(0), 10);
+        if(tmmp>6)
+            tmmp+=2;
+        rectangle(binImg, Point(0, 0), Point(binImg.cols , binImg.rows ), Scalar(0), 20+tmmp);
 
-        if (0) {
+        if (1) {
             imshow("bin", binImg);
             waitKey(0);
-            destroyWindow("bin");
+//            destroyWindow("bin");
         }
-
+        rectangle(binImg, Point(0, 0), Point(binImg.cols - 1, binImg.rows - 1), Scalar(0), 10,20);
 
         int width = binImg.cols;
         int height = binImg.rows;
@@ -401,37 +374,37 @@ namespace easypr {
         bool inBlock = false;//是否遍历到了字符区内
         int count = 0;
         Mat roiImg;
-//QR
-//    for (int col = 0; col < width; col++)//列
-//    {
-//        for (int row = 0; row < height; row++)//行
-//        {
-//            perPixelValue = binImg.at<uchar>(row, col);
-//            if (perPixelValue == 0)//如果是白底黑字
-//            {
-//                projectValArry[col]++;
-//            }
-//        }
-//
-//        float tmp = (float) projectValArry[col] / (float) binImg.rows;
-//        if (!inBlock && tmp >= 0.9 && tmp <= 1) {
-//            inBlock = true;
-//            cout << "startIndex is " << col << endl;
-//        } else if (inBlock) {
-//            if (projectValArry[col] >= projectValArry[col - 1] )
-//                continue;
-//            inBlock = false;
-//            if (count == 1) {
-//                startIndex = col - 1;
-//                roiImg = binImg(Range(0, height), Range(startIndex, width));
-//                roiImg = greyImg(Range(0, height), Range(startIndex, width));
-//                imshow("QR_cut", roiImg);
-//                waitKey(0);
-//                break;
-//            }
-//            count++;
-//        }
-//    }
+
+    for (int col = 0; col < width; col++)//列
+    {
+        for (int row = 0; row < height; row++)//行
+        {
+            perPixelValue = binImg.at<uchar>(row, col);
+            if (perPixelValue == 0)//如果是白底黑字
+            {
+                projectValArry[col]++;
+            }
+        }
+
+        float tmp = (float) projectValArry[col] / (float) binImg.rows;
+        if (!inBlock && tmp >= 0.9 && tmp <= 1) {
+            inBlock = true;
+            cout << "startIndex is " << col << endl;
+        } else if (inBlock) {
+            if (projectValArry[col] >= projectValArry[col - 1] )
+                continue;
+            inBlock = false;
+            if (count == 1) {
+                startIndex = col - 1;
+                roiImg = binImg(Range(0, height), Range(startIndex, width));
+                roiImg = greyImg(Range(0, height), Range(startIndex, width));
+                imshow("QR_cut", roiImg);
+                waitKey(0);
+                break;
+            }
+            count++;
+        }
+    }
 
 //    Mat verticalProjectionMat(height, width, CV_8UC1);//垂直投影的画布
 //    for (int i = 0; i < height; i++)
@@ -579,7 +552,7 @@ namespace easypr {
             }
         }
 
-        int gap = 0.75*roiImg.rows;
+        int gap = 0.7*roiImg.rows;
         int witdh = 5 * gap;
         int *projectValArryMax = new int[width];//创建用于储存每列白色像素个数的数组
         memset(projectValArryMax, roiImg.rows, width * 4);//初始化数组
@@ -617,7 +590,9 @@ namespace easypr {
         imshow("rowcut23", roiImg);
         waitKey(0);
         bitwise_not(roiImg,roiImg);
-        imwrite("r1.jpg", roiImg); //将矫正后的图片保存下来
+        resultVec=roiImg;
+//        imwrite("r1５３４.jpg", roiImg); //将矫正后的图片保存下来
+
 
 //    Mat horizontalProjectionMat(height, width, CV_8UC1);//创建画布
 //    for (int i = 0; i < height; i++)
@@ -638,43 +613,44 @@ namespace easypr {
 //    }
 //    imshow("水平投影",horizontalProjectionMat);
 //    cvWaitKey(0);
-
-        startIndex = 0;//记录进入字符区的索引
-        endIndex = 0;//记录进入空白区域的索引
-        inBlock = false;//是否遍历到了字符区内
-        for (int i = 0; i < roiImg.cols; ++i) {
-            float tmp = (float) projectValArry[i] / (float) roiImg.cols;
-            if (!inBlock && tmp >= 0.9 && tmp <= 1)//进入字符区了
-            {
-                for (; i < roiImg.cols; i++) {
-                    if (projectValArry[i] < projectValArry[i - 1]) {
-                        inBlock = true;
-                        startIndex = i;
-                        cout << "startIndex is " << startIndex << endl;
-                        break;
-                    }
-                }
-            } else if (tmp >= 0.9 && tmp <= 1 && inBlock)//进入空白区了
-            {
-                for (; i < roiImg.cols; i++) {
-                    if (projectValArry[i] <= projectValArry[i - 1]) {
-                        break;
-                    }
-                }
-                endIndex = i;
-                inBlock = false;
-                roiImg = roiImg(Range(startIndex, endIndex + 1), Range(0, roiImg.cols));
-
-                imshow("rowcut", roiImg);
-                waitKey(0);
-            }
-        }
-
-
-
+//
+//        startIndex = 0;//记录进入字符区的索引
+//        endIndex = 0;//记录进入空白区域的索引
+//        inBlock = false;//是否遍历到了字符区内
+//        for (int i = 0; i < roiImg.cols; ++i) {
+//            float tmp = (float) projectValArry[i] / (float) roiImg.cols;
+//            if (!inBlock && tmp >= 0.9 && tmp <= 1)//进入字符区了
+//            {
+//                for (; i < roiImg.cols; i++) {
+//                    if (projectValArry[i] < projectValArry[i - 1]) {
+//                        inBlock = true;
+//                        startIndex = i;
+//                        cout << "startIndex is " << startIndex << endl;
+//                        break;
+//                    }
+//                }
+//            } else if (tmp >= 0.9 && tmp <= 1 && inBlock)//进入空白区了
+//            {
+//                for (; i < roiImg.cols; i++) {
+//                    if (projectValArry[i] <= projectValArry[i - 1]) {
+//                        break;
+//                    }
+//                }
+//                endIndex = i;
+//                inBlock = false;
+//                roiImg = roiImg(Range(startIndex, endIndex + 1), Range(0, roiImg.cols));
+//
+//                imshow("rowcut", roiImg);
+//                waitKey(0);
+//            }
+//        }
+//
+//
+//
 
 
     }
+
 
 
 
@@ -771,7 +747,7 @@ namespace easypr {
             warpAffine(input_grey, RatationedImg, M2, RoiSrcImg.size(),1, 0, Scalar(0));//仿射变换
             imshow("旋转之后", RatationedImg);
             waitKey(0);
-            imwrite("r.jpg", RatationedImg); //将矫正后的图片保存下来
+            imwrite("r４３２.jpg", RatationedImg); //将矫正后的图片保存下来
 
             int width = RatationedImg.cols;
             int height =  RatationedImg.rows;
@@ -1052,7 +1028,7 @@ namespace easypr {
 //        warpAffine(RoiSrcImg, RatationedImg, M2, RoiSrcImg.size(),1, 0, Scalar(0));//仿射变换
 //        imshow("旋转之后", RatationedImg);
 //        waitKey(0);
-//        imwrite("r.jpg", RatationedImg); //将矫正后的图片保存下来
+//        imwrite("321.jpg", RatationedImg); //将矫正后的图片保存下来
             Scalar color = Scalar(G_RNG.uniform(0, 255), G_RNG.uniform(0, 255), G_RNG.uniform(0, 255));
             drawContours(Drawing, contours, i, color, 2, 8, img_contours, 0, Point());
         }
