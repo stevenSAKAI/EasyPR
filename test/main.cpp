@@ -5,6 +5,7 @@
 #include "chars.hpp"
 #include "plate.hpp"
 #include "easypr/core/core_func.h"
+#include "time.h"
 
 // %OPENCV%\x86\vc12\lib opencv_world300d.lib;
 
@@ -488,10 +489,9 @@ void QR_cut(){
         }
     }
 }
+//去除边界
+int del_edge(Mat input, Mat& result){
 
-void del_edge(Mat input, Mat& result){
-    imshow("pre", input);
-    waitKey(0);
     Mat greyImg;
     cvtColor(input, greyImg, CV_BGR2GRAY);
 
@@ -505,7 +505,7 @@ void del_edge(Mat input, Mat& result){
     cv::threshold(greyImg, binImg, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
 //    rectangle(binImg, Point(0, 0), Point(binImg.cols , binImg.rows ), Scalar(0), 10);
 
-    if (1) {
+    if (0) {
         imshow("bin", binImg);
         waitKey(0);
 //      destroyWindow("bin");
@@ -556,13 +556,13 @@ void del_edge(Mat input, Mat& result){
             }
         }
     }
-//    rectangle(greyImg, Point(0, 0), Point(roiImg.cols , roiImg.rows ), Scalar(0), 10);
-    Mat greyImg2 = greyImg(Range(startIndex, endIndex), Range(0, width));
+    greyImg = greyImg(Range(startIndex, endIndex), Range(0, width));
+    cv::threshold(greyImg, binImg, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
 
-
-    Mat binImg2;
-    cv::threshold(greyImg2, binImg, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
-    imshow("horizontal", binImg);
+    if(0){
+        imshow("horizontal", binImg);
+        waitKey(0);
+    }
 
     width = binImg.cols;
     height = binImg.rows;
@@ -570,8 +570,8 @@ void del_edge(Mat input, Mat& result){
     memset(valArry, 0, width * 4);//初始化数组
 
     startIndex = 0;//记录进入字符区的索引
-//切二维码
-    for (int col = 30; col < width; col++)//列
+    //　切二维码
+    for (int col = 20; col < width; col++)//列
     {
         for (int row = 0; row < height; row++)//行
         {
@@ -586,6 +586,7 @@ void del_edge(Mat input, Mat& result){
             break;
         }
     }
+    // 切右白边
     int flag = 0;
     for (int col = width-1; col > width/2; col--)
     {
@@ -606,17 +607,83 @@ void del_edge(Mat input, Mat& result){
                 endIndex = col + 4;
             else
                 endIndex = width - 1;
-            Mat greyImg3 = greyImg2(Range(0, height), Range(startIndex, endIndex));
-            cv::threshold(greyImg3, binImg, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
-            imshow("result", binImg);
-            waitKey(0);
+
             break;
         }
     }
+    if(startIndex>endIndex)
+        return 0;
+    greyImg = greyImg(Range(0, height), Range(startIndex, endIndex));
+    cv::threshold(greyImg, binImg, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY_INV);
+    if(0){
+        imshow("result", binImg);
+        waitKey(0);
+    }
+    Mat result1;
     result = binImg;
+    int dilation_size = 3;
+    Mat element = getStructuringElement( MORPH_RECT,
+                                         Size( 2*dilation_size , 2*dilation_size ),
+                                         Point( dilation_size, dilation_size ) );
+    cv::dilate(result, result1, element);
+//    imshow("spin1", result1);
+//    waitKey(0);
+
+    vector<vector<Point> > contours1;
+    findContours(result1,
+                 contours1,               // a vector of contours
+                 CV_RETR_EXTERNAL,       // retrieve the external contours
+                 CV_CHAIN_APPROX_NONE);
+    CvPoint2D32f rectpoint[4];
+    CvBox2D rect;
+    int max_i=0;
+    int max_wid=0;
+    for(int i= 0;i < contours1.size(); i++) {
+        rect = minAreaRect(Mat(contours1[i]));
+        if(rect.size.width>max_wid){
+            max_wid=rect.size.width;
+            max_i = i;
+        }
+    }
+    rect = minAreaRect(Mat(contours1[max_i]));
+    cvBoxPoints(rect, rectpoint); //获取4个顶点坐标
+    //与水平线的角度
+    float angle = rect.angle;
+    cout << angle << endl;
+
+    int line1 = sqrt((rectpoint[1].y - rectpoint[0].y)*(rectpoint[1].y - rectpoint[0].y) + (rectpoint[1].x - rectpoint[0].x)*(rectpoint[1].x - rectpoint[0].x));
+    int line2 = sqrt((rectpoint[3].y - rectpoint[0].y)*(rectpoint[3].y - rectpoint[0].y) + (rectpoint[3].x - rectpoint[0].x)*(rectpoint[3].x - rectpoint[0].x));
+    //rectangle(binImg, rectpoint[0], rectpoint[3], Scalar(255), 2);
+
+    //为了让正方形横着放，所以旋转角度是不一样的。竖放的，给他加90度，翻过来
+    if (line1 > line2)
+    {
+        angle = 90 + angle;
+    }
+
+    Mat RatationedImg(result.rows, result.cols, CV_8UC1);
+    RatationedImg.setTo(0);
+
+    //放射变化
+    Mat M2 = getRotationMatrix2D(rect.center, angle, 1);//计算旋转加缩放的变换矩阵
+    warpAffine(result, RatationedImg, M2, result.size(), 1, 0, Scalar(0));//仿射变换
+    if (0) {
+        imshow("spin2", RatationedImg);
+        waitKey(0);
+//        destroyWindow("spin");
+    }
+    result=RatationedImg<100;
+//    cv::threshold(RatationedImg, RatationedImg, 0, 255, CV_THRESH_OTSU + CV_THRESH_BINARY);
+    if (0) {
+        imshow("spin", RatationedImg);
+        waitKey(0);
+//        destroyWindow("spin");
+    }
+
+//    result = binImg;
+    return 1;
 
 }
-
 
 
 int crop(Mat input, Mat& output, vector<Point> contours) {
@@ -625,7 +692,12 @@ int crop(Mat input, Mat& output, vector<Point> contours) {
     cvBoxPoints(rect, rectpoint); //获取4个顶点坐标
     //与水平线的角度
     float angle = rect.angle;
-//    cout << angle << endl;
+    cout << angle << endl;
+
+
+//    double angle1 = atan2((rectpoint[0].y - rectpoint[1].y),(rectpoint[0].x - rectpoint[1].x)*(double)180/3.1415926);
+//    cout << angle1 << endl;
+//    angle = angle1;
     int line1 = sqrt((rectpoint[1].y - rectpoint[0].y) * (rectpoint[1].y - rectpoint[0].y) +
                      (rectpoint[1].x - rectpoint[0].x) * (rectpoint[1].x - rectpoint[0].x));
     int line2 = sqrt((rectpoint[3].y - rectpoint[0].y) * (rectpoint[3].y - rectpoint[0].y) +
@@ -658,30 +730,45 @@ void crop_robot(){
     cv::Mat src_tmp, result;
     easypr::CCharsSegment plate;
     string s;
-    ifstream inf("resources/ocr_demo_pics/label");
+    ifstream inf("resources/demo_slip/info.txt");
     int a,b,c,d,e,f,g,h;
     string name ;
     int count=0;
+    time_t c_end,c_start;
     while (getline(inf, s))      //getline(inf,s)是逐行读取inf中的文件信息
     {
-        if(s[0]=='i'){
-            name="";
-            for(int i=14;s[i]!='.';i++)
-            name+=s[i];
-            count=0;
+        if(s[0]=='r'){
+            name=s;
+//            for(int i=14;s[i]!='.';i++)
+//            name+=s[i];
+//            count=0;
         }
-        if(s[0] != 'i'&& s[0] != NULL){
+        if(s[0] != 'r'&& s[0] != NULL){
+            c_start = clock();
             vector<Point> contours;
-            cv::Mat src = cv::imread("resources/ocr_demo_pics/"+name+".jpg");
+            cv::Mat src = cv::imread("resources/demo_slip/"+name);
             sscanf(s.c_str(), "%d,%d %d,%d %d,%d %d,%d", &a,&b,&c,&d, &e, &f,&g,&h);
-            contours.push_back(Point2f(a*2,b*2));
-            contours.push_back(Point2f(c*2,d*2));
-            contours.push_back(Point2f(e*2,f*2));
-            contours.push_back(Point2f(g*2,h*2));
+            contours.push_back(Point2f(a,b));
+            contours.push_back(Point2f(c,d));
+            contours.push_back(Point2f(e,f));
+            contours.push_back(Point2f(g,h));
+//            contours.push_back(Point2f(a*2,b*2));
+//            contours.push_back(Point2f(c*2,d*2));
+//            contours.push_back(Point2f(e*2,f*2));
+//            contours.push_back(Point2f(g*2,h*2));
 //            int result = plate.charsSegment_me(src, resultVec, contours);
+            c_start = clock();
             int tmp = crop(src, src_tmp, contours);
-            del_edge(src_tmp, result);
-            cv::imwrite("resources/crop_robot_output/"+name+"_"+to_string(count)+".png", result);
+
+            if(del_edge(src_tmp, result))
+            {
+                c_end   = clock();
+                printf("The pause used %lf s by clock()\n",(double)(c_end - c_start) / CLOCKS_PER_SEC);
+                cv::imwrite("resources/crop_robot_output/"+name+"_"+to_string(count)+".png", result);
+
+            }
+            else
+                printf("%s\n",name);
             count++;
         }
     }
